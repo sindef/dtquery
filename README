@@ -1,0 +1,21 @@
+//Simple CLI tool for testing DNS servers. This is NOT for malicious intent and should only be used for load testing of a server.
+//Use a -h flag to see all the options. It generates random data for the DNS requests sent.
+//
+//Usage: dnstest [-h] [-c COUNT] [-s SERVER] [-t TIMEOUT] [-p PORT]
+//
+//Options:
+//  -h, --help
+//		Show this help message and exit.
+//  -c COUNT, COUNT
+//		Number of requests to send.
+//  -s SERVER, SERVER
+//		Server to send the requests to.
+//  -t TIMEOUT, TIMEOUT
+//		Timeout for the requests.
+//  -p PORT, PORT
+//		Port to send the requests to (default: 53).
+//  -q TYPE, TYPE
+//      Type of request to send (A, AAAA, MX .etc)
+// 
+//Examples:
+//	dnstest -c 10 -s 10.0.0.1
