@@ -1,5 +1,6 @@
-Simple CLI tool for testing DNS servers. This is NOT for malicious intent and should only be used for load testing of a server.
-Use a -h flag to see all the options. It generates random data for the DNS requests sent.
+Simple CLI tool for testing DNS servers. This is NOT for malicious intent and was only made for load testing of a server.
+This will not return an output of the query.
+Use a -h flag to see all the options.
 
 Usage: dnstest [-h] [-c COUNT] [-s SERVER] [-t TIMEOUT] [-p PORT] [-S LENGTH] [-f LENGTH] [-r]
 
