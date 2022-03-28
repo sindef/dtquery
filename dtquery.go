@@ -19,7 +19,7 @@ var (
 	server    = flag.String("s", "", "Server to send the requests to")
 	timeout   = flag.Int("t", 5, "Timeout for the requests")
 	port      = flag.Int("p", 53, "Port to send the requests to")
-	queryType = flag.String("q", "A", "Type of DNS query to send") //Type of DNS query to send
+	queryType = flag.String("q", "A", "Type of DNS query to send")
 	random    = flag.Bool("r", false, "Use random domain names")
 	domain    = flag.String("d", "", "Top level domain to use - e.g. com")
 	quick     = flag.Int("f", 0, "Use quick/fast mode - this will send the first domain name multiple times of the specified length")
@@ -56,6 +56,7 @@ func main() {
 	}
 
 	//Create a buffer to run only 10000 goroutines at a time (I only tested this on an 8 core CPU with 32G RAM - but with more resources you can open more sockets)
+	//This is the hard limit here - if you have more than the amount of sockets you can open, the program will panic.
 	count := *count
 	maxGoroutines := 10000
 	maxChan := make(chan struct{}, maxGoroutines)
@@ -114,9 +115,9 @@ func main() {
 				Type:   qt,  // Hex value for the type
 				Class:  0x1, // Internet
 			}
-
+			//Generate random ID - rfc1035
 			query := dns.DNSQuery{
-				ID:        0xAAAA,
+				ID:        dns.RandomID(),
 				RD:        true,
 				Questions: []dns.DNSQuestion{q},
 			}

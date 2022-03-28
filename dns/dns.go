@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
+	"math/rand"
 	"strings"
 )
 
@@ -16,7 +17,7 @@ type DNSQuery struct {
 
 	AA           bool  // Authoriative answer
 	TC           bool  // 1 bit flag specifying if the message has been truncated
-	RD           bool  // 1 bit flag to specify if recursion is desired (if the DNS server we secnd out request to doesn't know the answer to our query, it can recursively ask other DNS servers)
+	RD           bool  // 1 bit flag to specify if recursion is desired (if the DNS server we send out request to doesn't know the answer to our query, it can recursively ask other DNS servers)
 	RA           bool  // Recursive available
 	Z            uint8 // Reserved for future use
 	ResponseCode uint8
@@ -92,4 +93,10 @@ func Qencode(q DNSQuestion) []byte {
 
 	return buffer.Bytes()
 
+}
+
+//Generates a random value between 43690 and 65535 as a uint16
+func RandomID() uint16 {
+	id := rand.Intn(65535-43690) + 43690
+	return uint16(id)
 }
