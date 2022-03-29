@@ -100,3 +100,29 @@ func RandomID() uint16 {
 	id := rand.Intn(65535-43690) + 43690
 	return uint16(id)
 }
+
+//Given a string, return a uint16 of the DNS type
+func Type(query string) uint16 {
+	var qt uint16
+	switch query {
+	case "A":
+		qt = 0x1
+	case "NS":
+		qt = 0x2
+	case "CNAME":
+		qt = 0x5
+	case "SOA":
+		qt = 0x6
+	case "PTR":
+		qt = 0x12
+	case "MX":
+		qt = 0x15
+	case "TXT":
+		qt = 0x16
+	case "AAAA":
+		qt = 0x1c
+	default:
+		qt = 0x1
+	}
+	return qt
+}

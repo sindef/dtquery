@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-//Global Variables - Flags & Wait Group
-var wg sync.WaitGroup
+//Flags are defined globally here - these are the command line arguments and what will be returned when queried
 
 var (
 	count     = flag.Int("c", 1, "Number of requests to send")
@@ -33,39 +32,15 @@ func main() {
 	host := *server + ":" + strconv.Itoa(*port)
 
 	//Check the DNS type - return the hex value for the type (rfc1035 & rfc3596)
-	var qt = uint16(0)
-	switch *queryType {
-	case "A":
-		qt = 0x1
-	case "NS":
-		qt = 0x2
-	case "CNAME":
-		qt = 0x5
-	case "SOA":
-		qt = 0x6
-	case "PTR":
-		qt = 0x12
-	case "MX":
-		qt = 0x15
-	case "TXT":
-		qt = 0x16
-	case "AAAA":
-		qt = 0x1c
-	default:
-		qt = 0x1
-	}
+	var qt = dns.Type(*queryType)
 
-	//Create a buffer to run only 10000 goroutines at a time (I only tested this on an 8 core CPU with 32G RAM - but with more resources you can open more sockets)
-	//This is the hard limit here - if you have more than the amount of sockets you can open, the program will panic.
-	count := *count
-	maxGoroutines := 10000
-	maxChan := make(chan struct{}, maxGoroutines)
-
-	var domName string
+	//Create sync group & mutex for the goroutines
+	wg := &sync.WaitGroup{}
+	mut := &sync.Mutex{}
 
 	//Check whether random, quick or slow mode is enabled - warn that one of these modes have to be selected:
 	if *random == false && *quick == 0 && *slow == 0 {
-		fmt.Println("You must select either random, quick or slow mode using the flags -r, -f or -S")
+		fmt.Println("You must select either random, fast or slow mode using the flags -r, -f or -S")
 		return
 	}
 
@@ -78,67 +53,77 @@ func main() {
 		}
 	}
 
-	for i := 0; i < count; i++ {
-		wg.Add(1)
-		go func() {
-			//Wait for a goroutine to be available
-			maxChan <- struct{}{}
-			defer func() {
-				<-maxChan
-			}()
+	count := *count
+	var domName string
 
+	/*Main for loop - for each request, create a goroutine to send the request. When the goroutine finishes, decrement the waitgroup
+	and unlock the mutex. I did try this by allowing race conditions and it was more of a DoS tool - sending all requests at once, rather than
+	creating arbitrary load */
+	for i := 0; i < count; i++ {
+
+		//Adds to the wait group - if the wait group reaches 0, the main function will complete (https://pkg.go.dev/sync)
+		wg.Add(1)
+
+		/*For the request number, create a goroutine to send the request (this runs concurrently, so as soon as the go routine is created, the program continues)
+		the mutex will slow things down a little, but keeps everything safe and happy, and we avoid a race condition. This is still slightly faster than not using
+		a goroutine, which does become noticeable when sending millions of request for load */
+		go func(wg *sync.WaitGroup, m *sync.Mutex) {
+			defer wg.Done()
+			m.Lock()
 			//If the random flag is set, set domName to the dns.Random function
 			if *random {
 				domName = dns.Random()
 			} else {
-				//Check if the domain flag is set
 				if *domain != "" {
-					//Check if a . has been prepended, if not, add one to the *domain var
+					//Check if a . has been prepended, if not, add one to the beginning of the TLD string
 					if (*domain)[0] != '.' {
 						*domain = "." + *domain
 
 					}
 				}
-				//If the quick flag is set, set domName to the dns.QuickWord function
-				if *quick > 0 {
-					domName = dns.QuickWord(*quick, *domain)
-				} else {
-					//Else set domName to the slower dns.RandomWords function
-					domName = dns.RandomWords(*slow, *domain)
-
-				}
 			}
-			defer wg.Done()
+			//If the quick flag is set, set domName to the dns.QuickWord function
+			if *quick > 0 {
+				domName = dns.QuickWord(*quick, *domain)
+			} else if *slow > 0 {
+				//Else set domName to the slower dns.RandomWords function
+				domName = dns.RandomWords(*slow, *domain)
 
+			}
+			//Create a new DNS question - Contains our type and domain name
 			q := dns.DNSQuestion{
 				Domain: domName,
-				Type:   qt,  // Hex value for the type
-				Class:  0x1, // Internet
+				Type:   qt,
+				Class:  0x1,
 			}
-			//Generate random ID - rfc1035
+			//Create the query - generate random ID - rfc1035
 			query := dns.DNSQuery{
 				ID:        dns.RandomID(),
 				RD:        true,
 				Questions: []dns.DNSQuestion{q},
 			}
-			fmt.Println("Sending query to ", host, ": ", query)
+			fmt.Println("Sending query to ", host, ": ", domName)
 			// Setup a UDP connection
 			conn, err := net.Dial("udp", host)
 			if err != nil {
 				log.Fatal("failed to connect:", err)
 			}
 			defer conn.Close()
-
 			//Set deadline for the request to the specified timeout
 			if err := conn.SetDeadline(time.Now().Add(time.Duration(*timeout) * time.Second)); err != nil {
 				log.Fatal("failed to set deadline: ", err)
 			}
 			encodedQuery := dns.Uencode(query)
 
+			//Send the encoded query to the server
 			conn.Write(encodedQuery)
 
-		}()
+			//Unlock the mutex and allow the next goroutine to run
+			m.Unlock()
+
+		}(wg, mut)
 	}
+
 	//Wait for all the goroutines to finish
 	wg.Wait()
 	fmt.Println(strconv.Itoa(count) + " queries sent to " + host)
