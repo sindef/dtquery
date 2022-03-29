@@ -123,7 +123,6 @@ func main() {
 
 		}(wg, mut)
 	}
-
 	//Wait for all the goroutines to finish
 	wg.Wait()
 	fmt.Println(strconv.Itoa(count) + " queries sent to " + host)
