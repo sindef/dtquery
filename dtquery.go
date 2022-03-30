@@ -5,14 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"strconv"
 	"sync"
 	"time"
 )
 
-//Flags are defined globally here - these are the command line arguments and what will be returned when queried
-
+//Flags are defined globally here - these are the command line arguments and what will be returned when queried with -h flag
 var (
 	count     = flag.Int("c", 1, "Number of requests to send")
 	server    = flag.String("s", "", "Server to send the requests to")
@@ -53,23 +53,32 @@ func main() {
 		}
 	}
 
+	//If slow mode was enabled, return a slice of all possible domain names of that length. Else return an empty slice
+	var all []string
+	if *slow != 0 {
+		all = dns.AllWords(*slow, *domain)
+	}
+
+	//Create variables for the amount of requests to send and the domain name to send
 	count := *count
 	var domName string
 
 	/*Main for loop - for each request, create a goroutine to send the request. When the goroutine finishes, decrement the waitgroup
 	and unlock the mutex. I did try this by allowing race conditions and it was more of a DoS tool - sending all requests at once, rather than
-	creating arbitrary load */
+	creating arbitrary load. TODO: Add some concurrency*/
 	for i := 0; i < count; i++ {
 
 		//Adds to the wait group - if the wait group reaches 0, the main function will complete (https://pkg.go.dev/sync)
 		wg.Add(1)
 
-		/*For the request number, create a goroutine to send the request (this runs concurrently, so as soon as the go routine is created, the program continues)
-		the mutex will slow things down a little, but keeps everything safe and happy, and we avoid a race condition. This is still slightly faster than not using
-		a goroutine, which does become noticeable when sending millions of request for load */
+		// For the request number, create a goroutine to send the request (this runs concurrently, so as soon as the go routine is created, the program continues)
 		go func(wg *sync.WaitGroup, m *sync.Mutex) {
-			defer wg.Done()
+			/*The generation of these domain names from the dictionary is our shared resource in memory, so a mutex is used to stop memory going brr.
+			This is particularly noticed in slow mode where the whole file needs to be parsed.  */
 			m.Lock()
+			defer wg.Done()
+			defer m.Unlock()
+
 			//If the random flag is set, set domName to the dns.Random function
 			if *random {
 				domName = dns.Random()
@@ -86,11 +95,12 @@ func main() {
 			if *quick > 0 {
 				domName = dns.QuickWord(*quick, *domain)
 			} else if *slow > 0 {
-				//Else set domName to the slower dns.RandomWords function
-				domName = dns.RandomWords(*slow, *domain)
+				//Use a random domain name from the 'all' slice
+				domName = all[rand.Intn(len(all))]
 
 			}
-			//Create a new DNS question - Contains our type and domain name
+
+			//Create a new DNS question - Contains our type and domain name.
 			q := dns.DNSQuestion{
 				Domain: domName,
 				Type:   qt,
@@ -102,8 +112,9 @@ func main() {
 				RD:        true,
 				Questions: []dns.DNSQuestion{q},
 			}
+
 			fmt.Println("Sending query to ", host, ": ", domName)
-			// Setup a UDP connection
+			// Setup a UDP connection to the host
 			conn, err := net.Dial("udp", host)
 			if err != nil {
 				log.Fatal("failed to connect:", err)
@@ -117,9 +128,6 @@ func main() {
 
 			//Send the encoded query to the server
 			conn.Write(encodedQuery)
-
-			//Unlock the mutex and allow the next goroutine to run
-			m.Unlock()
 
 		}(wg, mut)
 	}
